@@ -83,6 +83,7 @@ public void OnPluginStart()
 	g_BlackholeSmokes = 	CreateConVar("blackholedecoys_smokes", "1", "Push active smoke grenades towards black hole", FCVAR_NOTIFY);
 	
 	g_Blackholes = new ArrayList();
+	AutoExecConfig(true, "blackholedecoys");
 }
 
 public void ShakeScreen(int client, float intensity, float duration, float frequency)
