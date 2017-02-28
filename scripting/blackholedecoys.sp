@@ -42,7 +42,7 @@ public Plugin myinfo =
 {
 	name = "Black hole decoys",
 	author = PLUGIN_AUTHOR,
-	description = "Creates a temporary black hole wherever you throw your decoy",
+	description = "Creates a temporary black hole at decoy landing position",
 	version = PLUGIN_VERSION,
 	url = "https://github.com/Rachnus"
 };
@@ -64,7 +64,7 @@ public void OnPluginStart()
 		}
 	}
 	HookEvent("player_spawn", Event_PlayerSpawn);
-	RegConsoleCmd("sm_test", Command_Test);
+	
 	g_BlackholeEnable = 	CreateConVar("blackholedecoys_enabled", "1", "Enable/Disable plugin", FCVAR_NOTIFY);
 	g_ParticleEffect = 		CreateConVar("blackholedecoys_particle_effect", "blackhole", "Name of the particle effect you want to use", FCVAR_NOTIFY);
 	g_MinimumDistance = 	CreateConVar("blackholedecoys_minimum_distance", "250", "Minimum distance to push player towards black hole", FCVAR_NOTIFY);
@@ -83,11 +83,6 @@ public void OnPluginStart()
 	g_BlackholeSmokes = 	CreateConVar("blackholedecoys_smokes", "1", "Push active smoke grenades towards black hole", FCVAR_NOTIFY);
 	
 	g_Blackholes = new ArrayList();
-}
-
-public Action Command_Test(int client, int args)
-{
-	ShakeScreen(client, 20.0, 5.0, 0.7);
 }
 
 public void ShakeScreen(int client, float intensity, float duration, float frequency)
