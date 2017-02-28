@@ -20,6 +20,7 @@ int g_iViewModelIndex;
 ArrayList g_Blackholes;
 float g_BlackholeVolume[MAXPLAYERS * 2] =  { BLACKHOLE_VOLUME, ... };
 
+ConVar g_UseDecoyModel;
 ConVar g_BlackholeEnable;
 ConVar g_ParticleEffect;
 ConVar g_MinimumDistance;
@@ -54,17 +55,10 @@ public void OnPluginStart()
 	{
 		SetFailState("This plugin is for CSGO only.");	
 	}
-	
-	for (int i = 1; i <= MaxClients;i++)
-	{
-		if(IsClientInGame(i) && !IsFakeClient(i))
-		{
-			SDKHook(i, SDKHook_WeaponSwitchPost, OnClientWeaponSwitchPost);
-			g_PVMid[i] = Weapon_GetViewModelIndex(i, -1);
-		}
-	}
+
 	HookEvent("player_spawn", Event_PlayerSpawn);
 	
+	g_UseDecoyModel = 		CreateConVar("blackholedecoys_use_decoy_model", "1", "Whether or not to use custom model for decoy", FCVAR_NOTIFY);
 	g_BlackholeEnable = 	CreateConVar("blackholedecoys_enabled", "1", "Enable/Disable plugin", FCVAR_NOTIFY);
 	g_ParticleEffect = 		CreateConVar("blackholedecoys_particle_effect", "blackhole", "Name of the particle effect you want to use", FCVAR_NOTIFY);
 	g_MinimumDistance = 	CreateConVar("blackholedecoys_minimum_distance", "250", "Minimum distance to push player towards black hole", FCVAR_NOTIFY);
@@ -82,8 +76,61 @@ public void OnPluginStart()
 	g_BlackholeFlashbangs = CreateConVar("blackholedecoys_flashbangs", "1", "Push active flashbangs towards black hole", FCVAR_NOTIFY);
 	g_BlackholeSmokes = 	CreateConVar("blackholedecoys_smokes", "1", "Push active smoke grenades towards black hole", FCVAR_NOTIFY);
 	
+	HookConVarChange(g_UseDecoyModel, ConVar_DecoyModel);
+	
+	if(g_UseDecoyModel.BoolValue)
+	{
+		for (int i = 1; i <= MaxClients;i++)
+		{
+			if(IsClientInGame(i) && !IsFakeClient(i))
+			{
+				SDKHook(i, SDKHook_WeaponSwitchPost, OnClientWeaponSwitchPost);
+				g_PVMid[i] = Weapon_GetViewModelIndex(i, -1);
+			}
+		}
+	}
+	
 	g_Blackholes = new ArrayList();
 	AutoExecConfig(true, "blackholedecoys");
+}
+
+public void ConVar_DecoyModel(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	if(convar.IntValue > 0)
+	{	
+		//VIEWMODEL
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx90.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx80.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.mdl");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.vvd");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.sw.vtx");
+		
+		//GRENADE MODEL
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx90.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx80.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.mdl");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.phy");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.vvd");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.sw.vtx");
+		
+		//MATERIALS
+		AddMaterialsFromFolder("materials/models/weapons/v_models/blackholedecoys/hydragrenade/");
+		
+		for (int i = 1; i <= MaxClients;i++)
+		{
+			if(IsClientInGame(i) && !IsFakeClient(i))
+			{
+				SDKHook(i, SDKHook_WeaponSwitchPost, OnClientWeaponSwitchPost);
+				g_PVMid[i] = Weapon_GetViewModelIndex(i, -1);
+			}
+		}
+	}
+	else if(convar.IntValue <= 0)
+	{
+		for (int i = 1; i <= MaxClients;i++)
+			if(IsClientInGame(i) && !IsFakeClient(i))
+				SDKUnhook(i, SDKHook_WeaponSwitchPost, OnClientWeaponSwitchPost);
+	}
 }
 
 public void ShakeScreen(int client, float intensity, float duration, float frequency)
@@ -215,7 +262,8 @@ public void OnEntityCreated(int entity, const char[] classname)
 
 public Action DecoySpawned(int entity)
 {
-	SetEntityModel(entity, "models/weapons/blackholedecoys/w_eq_decoy.mdl");
+	if(g_UseDecoyModel.BoolValue)
+		SetEntityModel(entity, "models/weapons/blackholedecoys/w_eq_decoy.mdl");
 }
 
 public Action DecoyTouchPost(int entity, int other)
@@ -331,6 +379,9 @@ public Action Event_PlayerSpawn(Event event, const char[] name, bool dontBroadca
 	if(!g_BlackholeEnable.BoolValue)
 		return Plugin_Continue;
 		
+	if(!g_UseDecoyModel.BoolValue)
+		return Plugin_Continue; 
+		
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	g_PVMid[client] = Weapon_GetViewModelIndex(client, -1);
 	
@@ -372,37 +423,11 @@ stock void AddMaterialsFromFolder(char path[PLATFORM_MAX_PATH])
 				char fullPath[PLATFORM_MAX_PATH];
 				
 				Format(fullPath, sizeof(fullPath), "%s%s", path, buffer);
+				if(g_UseDecoyModel.BoolValue)
+					AddFileToDownloadsTable(fullPath);
 				
-				AddFileToDownloadsTable(fullPath);
-				PrecacheModel(fullPath);
-			}
-		}
-	}
-}
-
-stock void AddModelsFromFolder(char path[PLATFORM_MAX_PATH])
-{
-	DirectoryListing dir = OpenDirectory(path, true);
-	if(dir != INVALID_HANDLE)
-	{
-		char buffer[PLATFORM_MAX_PATH];
-		FileType type;
-		
-		while(dir.GetNext(buffer, PLATFORM_MAX_PATH, type))
-		{
-			if(type == FileType_File && (StrContains(buffer, ".mdl", false) != -1 && !StrContains(buffer, ".ztmp", false) != -1))
-			{
-				char fullPath[PLATFORM_MAX_PATH];
-				Format(fullPath, sizeof(fullPath), "%s%s", path, buffer);
-				
-				AddFileToDownloadsTable(fullPath);
-				PrecacheModel(fullPath);
-			}
-			else if(type == FileType_File && (StrContains(buffer, ".vtx", false) != -1 || StrContains(buffer, ".vvd", false) != -1 || StrContains(buffer, ".phy", false) != -1))
-			{
-				char fullPath[PLATFORM_MAX_PATH];
-				Format(fullPath, sizeof(fullPath), "%s%s", path, buffer);
-				AddFileToDownloadsTable(fullPath);
+				if(!IsModelPrecached(fullPath))
+					PrecacheModel(fullPath);
 			}
 		}
 	}
@@ -410,13 +435,16 @@ stock void AddModelsFromFolder(char path[PLATFORM_MAX_PATH])
 
 public void OnClientWeaponSwitchPost(int client, int weaponid)
 {
-    char weapon[64];
-    GetEntityClassname(weaponid, weapon,sizeof(weapon));
-    if(StrEqual(weapon, "weapon_decoy"))
-    {
-        SetEntProp(weaponid, Prop_Send, "m_nModelIndex", 0);
-        SetEntProp(g_PVMid[client], Prop_Send, "m_nModelIndex", g_iViewModelIndex);
-    }
+	if(!g_UseDecoyModel.BoolValue)
+		return;
+		
+	char weapon[64];
+	GetEntityClassname(weaponid, weapon,sizeof(weapon));
+	if(StrEqual(weapon, "weapon_decoy"))
+	{
+		SetEntProp(weaponid, Prop_Send, "m_nModelIndex", 0);
+		SetEntProp(g_PVMid[client], Prop_Send, "m_nModelIndex", g_iViewModelIndex);
+	}
 }
 
 stock void PrecacheEffect(const char[] sEffectName)
@@ -459,32 +487,31 @@ public void OnClientDisconnect(int client)
 
 public void OnMapStart()
 {
-	g_iViewModelIndex = PrecacheModel("models/weapons/blackholedecoys/v_eq_decoy.mdl");
-	PrecacheModel("models/weapons/blackholedecoys/w_eq_decoy_thrown.mdl");
-	PrecacheModel("models/weapons/blackholedecoys/w_eq_decoy.mdl");
-	//VIEWMODEL
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx90.vtx");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx80.vtx");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.mdl");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.vvd");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.sw.vtx");
-	
-	//GRENADE MODEL
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx90.vtx");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx80.vtx");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.mdl");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.phy");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.vvd");
-	AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.sw.vtx");
-	
+	if(g_UseDecoyModel.BoolValue)
+	{	
+		//VIEWMODEL
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx90.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.dx80.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.mdl");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.vvd");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/v_eq_decoy.sw.vtx");
+		
+		//GRENADE MODEL
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx90.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.dx80.vtx");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.mdl");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.phy");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.vvd");
+		AddFileToDownloadsTable("models/weapons/blackholedecoys/w_eq_decoy.sw.vtx");
+	}
 	//MATERIALS
+	AddMaterialsFromFolder("materials/models/weapons/v_models/blackholedecoys/hydragrenade/");
+	
 	AddFileToDownloadsTable("materials/blackholedecoys/effects/electric1.vmt");
 	AddFileToDownloadsTable("materials/blackholedecoys/effects/electric1.vtf");
-	
+		
 	AddFileToDownloadsTable("materials/blackholedecoys/particle/particle_decals/snow_crater_1.vmt");
 	AddFileToDownloadsTable("materials/blackholedecoys/particle/particle_decals/snow_crater_1.vtf");
-	
-	AddMaterialsFromFolder("materials/models/weapons/v_models/blackholedecoys/hydragrenade/");
 	
 	//PARTICLES
 	AddFileToDownloadsTable("particles/blackholedecoys/blackhole.pcf");
@@ -493,6 +520,9 @@ public void OnMapStart()
 	AddFileToDownloadsTable("sound/misc/blackholedecoys/blackhole.mp3");
 	
 	//Precaching
+	g_iViewModelIndex = PrecacheModel("models/weapons/blackholedecoys/v_eq_decoy.mdl");
+	PrecacheModel("models/weapons/blackholedecoys/w_eq_decoy.mdl");
+	
 	PrecacheGeneric("particles/blackholedecoys/blackhole.pcf",true);
 	
 	PrecacheModel("materials/blackholedecoys/effects/electric1.vmt");
